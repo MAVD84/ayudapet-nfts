@@ -572,7 +572,8 @@ button {
   align-items: center;
 }
 .nft-actions a,
-.nft-actions button {
+.nft-actions button,
+.nft-actions span {
   font-size: 11px;
   font-weight: 800;
   color: var(--ink);

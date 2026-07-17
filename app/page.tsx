@@ -6,6 +6,7 @@ import {
   formatEther,
   isAddress,
   parseEther,
+  ZeroAddress,
 } from "ethers";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -20,6 +21,7 @@ const ABI = [
   "function getMisNfts(address) view returns (uint256[])",
   "function ownerOf(uint256) view returns (address)",
   "function tokenURI(uint256) view returns (string)",
+  "event Transfer(address indexed from,address indexed to,uint256 indexed tokenId)",
   "function mintCustomNFT(address,string,uint96) payable",
   "function burn(uint256)",
   "function setMintPrice(uint256) payable",
@@ -49,6 +51,7 @@ type NFT = {
   name?: string;
   image?: string;
   description?: string;
+  txHash?: string;
 };
 
 function short(address: string) {
@@ -131,6 +134,32 @@ export default function Home() {
             try {
               const tokenUri: string = await contract.tokenURI(id);
               const nftOwner: string = await contract.ownerOf(id);
+              let nftTxHash = window.localStorage.getItem(
+                `ayudapet-mint-${id.toString()}`,
+              ) || undefined;
+              if (!nftTxHash) {
+                try {
+                  const transfers = await contract.queryFilter(
+                    contract.filters.Transfer(null, null, id),
+                    0,
+                    "latest",
+                  );
+                  const mintEvent = transfers.find(
+                    (event) =>
+                      "args" in event &&
+                      String(event.args[0]).toLowerCase() ===
+                        ZeroAddress.toLowerCase(),
+                  );
+                  nftTxHash = mintEvent?.transactionHash;
+                  if (nftTxHash)
+                    window.localStorage.setItem(
+                      `ayudapet-mint-${id.toString()}`,
+                      nftTxHash,
+                    );
+                } catch {
+                  /* Algunos RPC limitan consultas históricas extensas. */
+                }
+              }
               let metadata: {
                 name?: string;
                 image?: string;
@@ -148,6 +177,7 @@ export default function Home() {
                 id: id.toString(),
                 uri: tokenUri,
                 owner: nftOwner,
+                txHash: nftTxHash,
                 ...metadata,
                 image: metadata.image ? displayUri(metadata.image) : undefined,
               };
@@ -294,8 +324,18 @@ export default function Home() {
         Math.round(pct * 100),
         { value: mintPrice },
       );
-      await tx.wait();
+      const receipt = await tx.wait();
       setTxHash(tx.hash);
+      const mintedTransfer = receipt?.logs.find((log: { address: string; topics: string[] }) =>
+        log.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase() &&
+        log.topics.length === 4 &&
+        BigInt(log.topics[1]) === 0n,
+      );
+      if (mintedTransfer)
+        window.localStorage.setItem(
+          `ayudapet-mint-${BigInt(mintedTransfer.topics[3]).toString()}`,
+          tx.hash,
+        );
       setNotice({
         type: "ok",
         text: "¡NFT creado y confirmado en Polygon!",
@@ -808,9 +848,16 @@ export default function Home() {
                         {n.description || n.uri}
                       </p>
                       <div className="nft-actions">
-                        <a href={displayUri(n.uri)} target="_blank">
-                          Ver metadata ↗
-                        </a>
+                        {n.txHash ? (
+                          <a
+                            href={`https://polygonscan.com/tx/${n.txHash}`}
+                            target="_blank"
+                          >
+                            Ver hash en PolygonScan ↗
+                          </a>
+                        ) : (
+                          <span>Hash no disponible</span>
+                        )}
                         {n.owner.toLowerCase() === account.toLowerCase() && (
                           <button
                             onClick={() => burn(n.id)}
