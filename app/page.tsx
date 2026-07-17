@@ -6,6 +6,8 @@ import {
   formatEther,
   isAddress,
   parseEther,
+  toBeHex,
+  zeroPadValue,
   ZeroAddress,
 } from "ethers";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -129,6 +131,56 @@ export default function Home() {
       setAdminWallet(wallet);
       if (address) {
         const ids: bigint[] = await contract.getMisNfts(address);
+        const mintHashes = new Map<string, string>();
+        if (ids.length) {
+          try {
+            const transferEvent = contract.interface.getEvent("Transfer");
+            const transferTopic = transferEvent?.topicHash;
+            if (transferTopic) {
+              const latestBlock = await p.getBlockNumber();
+              const oldestBlock = Math.max(0, latestBlock - 1_000_000);
+              const remaining = new Set(
+                ids.map((tokenId) =>
+                  zeroPadValue(toBeHex(tokenId), 32).toLowerCase(),
+                ),
+              );
+              let toBlock = latestBlock;
+              let blockRange = 45_000;
+              while (toBlock >= oldestBlock && remaining.size) {
+                const fromBlock = Math.max(oldestBlock, toBlock - blockRange + 1);
+                try {
+                  const logs = await p.getLogs({
+                    address: CONTRACT_ADDRESS,
+                    fromBlock,
+                    toBlock,
+                    topics: [
+                      transferTopic,
+                      zeroPadValue(ZeroAddress, 32),
+                      null,
+                      Array.from(remaining),
+                    ],
+                  });
+                  for (const log of logs) {
+                    const tokenTopic = log.topics[3]?.toLowerCase();
+                    if (!tokenTopic) continue;
+                    const tokenId = BigInt(tokenTopic).toString();
+                    mintHashes.set(tokenId, log.transactionHash);
+                    remaining.delete(tokenTopic);
+                  }
+                  toBlock = fromBlock - 1;
+                } catch {
+                  if (blockRange > 9_000) {
+                    blockRange = 9_000;
+                    continue;
+                  }
+                  break;
+                }
+              }
+            }
+          } catch {
+            /* Las cards siguen disponibles aunque el RPC no entregue logs. */
+          }
+        }
         const items = await Promise.all(
           ids.map(async (id) => {
             try {
@@ -136,30 +188,12 @@ export default function Home() {
               const nftOwner: string = await contract.ownerOf(id);
               let nftTxHash = window.localStorage.getItem(
                 `ayudapet-mint-${id.toString()}`,
-              ) || undefined;
-              if (!nftTxHash) {
-                try {
-                  const transfers = await contract.queryFilter(
-                    contract.filters.Transfer(null, null, id),
-                    0,
-                    "latest",
-                  );
-                  const mintEvent = transfers.find(
-                    (event) =>
-                      "args" in event &&
-                      String(event.args[0]).toLowerCase() ===
-                        ZeroAddress.toLowerCase(),
-                  );
-                  nftTxHash = mintEvent?.transactionHash;
-                  if (nftTxHash)
-                    window.localStorage.setItem(
-                      `ayudapet-mint-${id.toString()}`,
-                      nftTxHash,
-                    );
-                } catch {
-                  /* Algunos RPC limitan consultas históricas extensas. */
-                }
-              }
+              ) || mintHashes.get(id.toString());
+              if (nftTxHash)
+                window.localStorage.setItem(
+                  `ayudapet-mint-${id.toString()}`,
+                  nftTxHash,
+                );
               let metadata: {
                 name?: string;
                 image?: string;
