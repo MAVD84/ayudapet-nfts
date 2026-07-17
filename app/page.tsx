@@ -1,0 +1,881 @@
+"use client";
+
+import {
+  BrowserProvider,
+  Contract,
+  formatEther,
+  isAddress,
+  parseEther,
+} from "ethers";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+
+const CONTRACT_ADDRESS = "0xeEb5aABCe9F86F5757e4Fa539E49AD9F40CA5A3A";
+const POLYGON_CHAIN_ID = "0x89";
+const ABI = [
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function mintPrice() view returns (uint256)",
+  "function adminWallet() view returns (address)",
+  "function owner() view returns (address)",
+  "function getMisNfts(address) view returns (uint256[])",
+  "function ownerOf(uint256) view returns (address)",
+  "function tokenURI(uint256) view returns (string)",
+  "function mintCustomNFT(address,string,uint96) payable",
+  "function burn(uint256)",
+  "function setMintPrice(uint256) payable",
+  "function setAdminWallet(address) payable",
+];
+
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: {
+        method: string;
+        params?: unknown[];
+      }) => Promise<unknown>;
+      on?: (event: string, fn: (...args: unknown[]) => void) => void;
+      removeListener?: (
+        event: string,
+        fn: (...args: unknown[]) => void,
+      ) => void;
+    };
+  }
+}
+
+type NFT = {
+  id: string;
+  uri: string;
+  owner: string;
+  name?: string;
+  image?: string;
+  description?: string;
+};
+
+function short(address: string) {
+  return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
+}
+function displayUri(uri: string) {
+  return uri.startsWith("ipfs://")
+    ? uri.replace("ipfs://", "https://ipfs.io/ipfs/")
+    : uri;
+}
+function friendlyError(error: unknown) {
+  const e = error as { shortMessage?: string; message?: string; code?: number };
+  if (e?.code === 4001) return "La solicitud fue rechazada en tu wallet.";
+  const message =
+    e?.shortMessage || e?.message || "Ocurrió un error inesperado.";
+  if (message.includes("InvalidURI"))
+    return "La URI debe ser ipfs://, comenzar con baf o ser https://";
+  if (message.includes("RoyaltyTooHigh")) return "La regalía máxima es 20%.";
+  if (message.includes("InvalidAmount"))
+    return "El monto no coincide con el precio de minteo.";
+  if (message.includes("NotAuthorized"))
+    return "No tienes permiso para realizar esta acción.";
+  return message.length > 160
+    ? "La transacción no pudo completarse. Revisa los datos y tu saldo."
+    : message;
+}
+
+export default function Home() {
+  const [account, setAccount] = useState("");
+  const [chainId, setChainId] = useState("");
+  const [mintPrice, setMintPrice] = useState<bigint>(0n);
+  const [owner, setOwner] = useState("");
+  const [adminWallet, setAdminWallet] = useState("");
+  const [nfts, setNfts] = useState<NFT[]>([]);
+  const [recipient, setRecipient] = useState("");
+  const [royalty, setRoyalty] = useState("5");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreviewUrl, setUploadPreviewUrl] = useState("");
+  const [uploadName, setUploadName] = useState("");
+  const [uploadDescription, setUploadDescription] = useState("");
+  const [attributes, setAttributes] = useState([{ trait_type: "", value: "" }]);
+  const [busy, setBusy] = useState("");
+  const [txHash, setTxHash] = useState("");
+  const [notice, setNotice] = useState<{
+    type: "ok" | "error";
+    text: string;
+  } | null>(null);
+  const [tab, setTab] = useState<"mint" | "collection" | "admin">("mint");
+  const isPolygon = chainId.toLowerCase() === POLYGON_CHAIN_ID;
+  const isOwner =
+    account && owner && account.toLowerCase() === owner.toLowerCase();
+
+  const provider = useMemo(
+    () =>
+      typeof window !== "undefined" && window.ethereum
+        ? new BrowserProvider(window.ethereum)
+        : null,
+    [account, chainId],
+  );
+
+  const refresh = useCallback(async (address?: string) => {
+    if (!window.ethereum) return;
+    try {
+      const p = new BrowserProvider(window.ethereum);
+      const network = await p.getNetwork();
+      setChainId(`0x${network.chainId.toString(16)}`);
+      const contract = new Contract(CONTRACT_ADDRESS, ABI, p);
+      const [price, contractOwner, wallet] = await Promise.all([
+        contract.mintPrice(),
+        contract.owner(),
+        contract.adminWallet(),
+      ]);
+      setMintPrice(price);
+      setOwner(contractOwner);
+      setAdminWallet(wallet);
+      if (address) {
+        const ids: bigint[] = await contract.getMisNfts(address);
+        const items = await Promise.all(
+          ids.map(async (id) => {
+            try {
+              const tokenUri: string = await contract.tokenURI(id);
+              const nftOwner: string = await contract.ownerOf(id);
+              let metadata: {
+                name?: string;
+                image?: string;
+                description?: string;
+              } = {};
+              try {
+                const response = await fetch(
+                  `/api/metadata?uri=${encodeURIComponent(tokenUri)}`,
+                );
+                if (response.ok) metadata = await response.json();
+              } catch {
+                /* La tarjeta conserva su respaldo visual. */
+              }
+              return {
+                id: id.toString(),
+                uri: tokenUri,
+                owner: nftOwner,
+                ...metadata,
+                image: metadata.image ? displayUri(metadata.image) : undefined,
+              };
+            } catch {
+              return null;
+            }
+          }),
+        );
+        setNfts(items.filter(Boolean) as NFT[]);
+      }
+    } catch (error) {
+      setNotice({ type: "error", text: friendlyError(error) });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!window.ethereum) return;
+    window.ethereum.request({ method: "eth_accounts" }).then((a) => {
+      const first = (a as string[])[0] || "";
+      setAccount(first);
+      setRecipient(first);
+      refresh(first);
+    });
+    const accounts = (...args: unknown[]) => {
+      const first = ((args[0] as string[]) || [])[0] || "";
+      setAccount(first);
+      setRecipient(first);
+      refresh(first);
+    };
+    const chain = (...args: unknown[]) => {
+      setChainId(args[0] as string);
+      refresh(account);
+    };
+    window.ethereum.on?.("accountsChanged", accounts);
+    window.ethereum.on?.("chainChanged", chain);
+    return () => {
+      window.ethereum?.removeListener?.("accountsChanged", accounts);
+      window.ethereum?.removeListener?.("chainChanged", chain);
+    };
+  }, [account, refresh]);
+
+  useEffect(() => {
+    if (!uploadFile) {
+      setUploadPreviewUrl("");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(uploadFile);
+    setUploadPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [uploadFile]);
+
+  async function connect() {
+    if (!window.ethereum) {
+      setNotice({
+        type: "error",
+        text: "Instala MetaMask u otra wallet compatible para continuar.",
+      });
+      return;
+    }
+    try {
+      const accounts = (await window.ethereum.request({
+        method: "eth_requestAccounts",
+      })) as string[];
+      setAccount(accounts[0]);
+      setRecipient(accounts[0]);
+      await refresh(accounts[0]);
+    } catch (e) {
+      setNotice({ type: "error", text: friendlyError(e) });
+    }
+  }
+  async function disconnect() {
+    if (window.ethereum) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_revokePermissions",
+          params: [{ eth_accounts: {} }],
+        });
+      } catch {
+        // Algunas wallets no permiten revocar permisos desde una dApp.
+      }
+    }
+    setAccount("");
+    setRecipient("");
+    setNfts([]);
+    setTxHash("");
+    setNotice({ type: "ok", text: "Wallet desconectada." });
+  }
+  async function switchPolygon() {
+    if (!window.ethereum) return connect();
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: POLYGON_CHAIN_ID }],
+      });
+    } catch (e) {
+      const err = e as { code?: number };
+      if (err.code === 4902)
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: POLYGON_CHAIN_ID,
+              chainName: "Polygon",
+              nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
+              rpcUrls: ["https://polygon-rpc.com"],
+              blockExplorerUrls: ["https://polygonscan.com"],
+            },
+          ],
+        });
+      else setNotice({ type: "error", text: friendlyError(e) });
+    }
+  }
+  async function signerContract() {
+    if (!provider) throw new Error("Conecta tu wallet primero.");
+    return new Contract(CONTRACT_ADDRESS, ABI, await provider.getSigner());
+  }
+  async function mint(e: FormEvent) {
+    e.preventDefault();
+    setNotice(null);
+    setTxHash("");
+    if (!isAddress(recipient))
+      return setNotice({
+        type: "error",
+        text: "La dirección del destinatario no es válida.",
+      });
+    const pct = Number(royalty);
+    if (pct < 0 || pct > 20)
+      return setNotice({
+        type: "error",
+        text: "La regalía debe estar entre 0% y 20%.",
+      });
+    try {
+      if (!uploadFile || !uploadName.trim())
+        throw new Error(
+          "Selecciona una imagen o GIF y escribe el nombre del NFT.",
+        );
+      setBusy("upload");
+      const metadataUri = await uploadNftFiles();
+      setBusy("mint");
+      const c = await signerContract();
+      const tx = await c.mintCustomNFT(
+        recipient,
+        metadataUri,
+        Math.round(pct * 100),
+        { value: mintPrice },
+      );
+      await tx.wait();
+      setTxHash(tx.hash);
+      setNotice({
+        type: "ok",
+        text: "¡NFT creado y confirmado en Polygon!",
+      });
+      await refresh(account);
+    } catch (err) {
+      setNotice({ type: "error", text: friendlyError(err) });
+    } finally {
+      setBusy("");
+    }
+  }
+  async function burn(id: string) {
+    if (
+      !confirm(
+        `¿Quemar definitivamente el NFT #${id}? Esta acción no se puede deshacer.`,
+      )
+    )
+      return;
+    try {
+      setBusy(`burn-${id}`);
+      const tx = await (await signerContract()).burn(id);
+      await tx.wait();
+      setNotice({ type: "ok", text: `NFT #${id} quemado correctamente.` });
+      await refresh(account);
+    } catch (e) {
+      setNotice({ type: "error", text: friendlyError(e) });
+    } finally {
+      setBusy("");
+    }
+  }
+  async function uploadNftFiles(): Promise<string> {
+    if (!account || !provider)
+      throw new Error("Conecta tu wallet para autorizar la subida.");
+    if (!uploadFile || !uploadName.trim())
+      throw new Error(
+        "Selecciona una imagen o GIF y escribe el nombre del NFT.",
+      );
+    if (uploadFile.size > 15 * 1024 * 1024)
+      throw new Error("El archivo no puede superar 15 MB.");
+    const hashBuffer = await crypto.subtle.digest(
+      "SHA-256",
+      await uploadFile.arrayBuffer(),
+    );
+    const digest = Array.from(new Uint8Array(hashBuffer))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    const timestamp = Date.now();
+    const message = `AyudaPet Upload\nWallet: ${account.toLowerCase()}\nFile SHA-256: ${digest}\nTimestamp: ${timestamp}`;
+    const signature = await (await provider.getSigner()).signMessage(message);
+    const authorizationResponse = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        wallet: account,
+        message,
+        signature,
+        timestamp,
+        digest,
+      }),
+    });
+    const authorizationText = await authorizationResponse.text();
+    let authorization: { token?: string; error?: string } = {};
+    try {
+      authorization = JSON.parse(authorizationText);
+    } catch {
+      throw new Error(authorizationText || "No se pudo autorizar la subida.");
+    }
+    if (!authorizationResponse.ok || !authorization.token)
+      throw new Error(authorization.error || "No se pudo autorizar la subida.");
+    const form = new FormData();
+    form.append("image", uploadFile);
+    form.append("name", uploadName.trim());
+    form.append("description", uploadDescription.trim());
+    form.append(
+      "attributes",
+      JSON.stringify(
+        attributes.filter((a) => a.trait_type.trim() && a.value.trim()),
+      ),
+    );
+    const response = await fetch(
+      "https://ayudapet.com/api/ayudapet-upload/upload.php",
+      {
+        method: "POST",
+        headers: { "X-Ayudapet-Token": authorization.token },
+        body: form,
+      },
+    );
+    const responseText = await response.text();
+    let result: { metadata?: string; error?: string } = {};
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        response.status === 413
+          ? "El servidor rechazó el archivo por tamaño. Usa uno menor a 15 MB."
+          : responseText || "HostVerge no devolvió una respuesta válida.",
+      );
+    }
+    if (!response.ok || !result.metadata)
+      throw new Error(result.error || "No se pudo subir el NFT.");
+    return result.metadata;
+  }
+  async function adminUpdate(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    const action = data.get("action");
+    try {
+      setBusy("admin");
+      const c = await signerContract();
+      const tx =
+        action === "price"
+          ? await c.setMintPrice(parseEther(String(data.get("price"))))
+          : await c.setAdminWallet(String(data.get("wallet")));
+      await tx.wait();
+      setNotice({
+        type: "ok",
+        text: "Configuración actualizada correctamente.",
+      });
+      await refresh(account);
+    } catch (err) {
+      setNotice({ type: "error", text: friendlyError(err) });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <main>
+      <header className="topbar">
+        <a className="brand" href="#top" aria-label="AyudaPet inicio">
+          <img className="brand-logo" src="/logo.png" alt="" />
+          <span>AyudaPet</span>
+        </a>
+        <div className="wallet-area">
+          <span className={`network ${isPolygon ? "live" : ""}`}>
+            <i />
+            {isPolygon ? "Polygon" : "Red incorrecta"}
+          </span>
+          {account ? (
+            <>
+              <span className="wallet connected" title={account}>
+                <span className="wallet-glyph" aria-hidden="true" />
+                {short(account)}
+              </span>
+              <button className="disconnect-wallet" onClick={disconnect}>
+                Desconectar
+              </button>
+            </>
+          ) : (
+            <button className="wallet" onClick={connect}>
+              <span className="wallet-glyph" aria-hidden="true" />
+              Conectar wallet
+            </button>
+          )}
+        </div>
+      </header>
+
+      <section className="hero" id="top">
+        <div className="hero-copy">
+          <span className="eyebrow">NFTs con propósito · Polygon</span>
+          <h1>
+            Convierte su historia en una <em>huella eterna.</em>
+          </h1>
+          <p>
+            Crea un NFT único para tu mascota, conserva su historia en la
+            blockchain y define regalías para su creador.
+          </p>
+          <div className="hero-actions">
+            <button
+              className="primary"
+              onClick={() => {
+                setTab("mint");
+                document
+                  .getElementById("app")
+                  ?.scrollIntoView({ behavior: "smooth" });
+              }}
+            >
+              Crear un NFT <span>→</span>
+            </button>
+            <a
+              href={`https://polygonscan.com/address/${CONTRACT_ADDRESS}`}
+              target="_blank"
+            >
+              Ver contrato ↗
+            </a>
+          </div>
+          <div className="trust">
+            <span>✓ Contrato verificado</span>
+            <span>✓ Estándar ERC-721</span>
+            <span>✓ Regalías EIP-2981</span>
+          </div>
+        </div>
+        <div className="pet-card pixel-cover">
+          <img
+            className="hero-pets"
+            src="/ayudapet-nft-pets-pixel.png"
+            alt="Mascotas NFT pixel art esperando entrar a la galería AyudaPet"
+          />
+          <div className="tag">
+            AYUDAPET
+            <br />
+            <small>ON-CHAIN PETS</small>
+          </div>
+        </div>
+      </section>
+
+      <section className="contract-strip">
+        <div>
+          <small>CONTRATO</small>
+          <a
+            href={`https://polygonscan.com/address/${CONTRACT_ADDRESS}`}
+            target="_blank"
+          >
+            {short(CONTRACT_ADDRESS)} ↗
+          </a>
+        </div>
+        <div>
+          <small>PRECIO ACTUAL</small>
+          <strong>{formatEther(mintPrice)} POL</strong>
+        </div>
+        <div>
+          <small>TUS CREACIONES</small>
+          <strong>{nfts.length}</strong>
+        </div>
+        <div>
+          <small>ESTADO</small>
+          <strong className="status">● Activo</strong>
+        </div>
+      </section>
+
+      <section className="workspace" id="app">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">TU ESPACIO</span>
+            <h2>Crea, consulta y gestiona</h2>
+          </div>
+          {!isPolygon && account && (
+            <button className="switch" onClick={switchPolygon}>
+              Cambiar a Polygon
+            </button>
+          )}
+        </div>
+        <nav className="tabs" aria-label="Acciones">
+          <button
+            className={tab === "mint" ? "active" : ""}
+            onClick={() => setTab("mint")}
+          >
+            Crear NFT
+          </button>
+          <button
+            className={tab === "collection" ? "active" : ""}
+            onClick={() => setTab("collection")}
+          >
+            Mis creaciones <b>{nfts.length}</b>
+          </button>
+          {isOwner && (
+            <button
+              className={tab === "admin" ? "active" : ""}
+              onClick={() => setTab("admin")}
+            >
+              Administración
+            </button>
+          )}
+        </nav>
+        {notice && (
+          <div className={`notice ${notice.type}`} role="status">
+            {notice.text}
+            <button onClick={() => setNotice(null)}>×</button>
+          </div>
+        )}
+        {txHash && (
+          <div className="tx-confirmed" role="status">
+            <div>
+              <span>MINTEO CONFIRMADO</span>
+              <b>La transacción quedó registrada en Polygon</b>
+              <code>{txHash}</code>
+            </div>
+            <a href={`https://polygonscan.com/tx/${txHash}`} target="_blank">
+              Ver hash en PolygonScan ↗
+            </a>
+          </div>
+        )}
+        {!account ? (
+          <div className="empty">
+            <div className="paw wallet-empty-icon" aria-hidden="true">
+              <span className="wallet-glyph" />
+            </div>
+            <h3>Conecta tu wallet para comenzar</h3>
+            <p>
+              Necesitas una wallet compatible con Polygon para crear y gestionar
+              tus NFTs.
+            </p>
+            <button className="primary" onClick={connect}>
+              <span className="wallet-glyph wallet-glyph-light" aria-hidden="true" />
+              Conectar wallet
+            </button>
+          </div>
+        ) : !isPolygon ? (
+          <div className="empty">
+            <div className="paw">◇</div>
+            <h3>Cambia a la red Polygon</h3>
+            <p>
+              Este contrato vive en Polygon. El cambio de red es rápido y
+              seguro.
+            </p>
+            <button className="primary" onClick={switchPolygon}>
+              Cambiar a Polygon
+            </button>
+          </div>
+        ) : tab === "mint" ? (
+          <form className="mint-form" onSubmit={mint} noValidate>
+            <div className="form-main">
+              <label>
+                Destinatario <span>Dirección que recibirá el NFT</span>
+                <input
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                  required
+                  placeholder="0x…"
+                />
+              </label>
+              <section className="upload-box">
+                <div className="upload-title">
+                  <div>
+                    <b>Publica tu imagen y metadata</b>
+                    <small>GIF, PNG, JPG o WEBP · máximo 15 MB</small>
+                  </div>
+                  <span>REQUERIDO</span>
+                </div>
+                <div className="upload-fields">
+                  <label
+                    className={`file-drop ${uploadPreviewUrl ? "selected" : ""}`}
+                  >
+                    <input
+                      type="file"
+                      accept="image/gif,image/png,image/jpeg,image/webp"
+                      onChange={(e) =>
+                        setUploadFile(e.target.files?.[0] || null)
+                      }
+                    />
+                    {uploadPreviewUrl && (
+                      <img
+                        src={uploadPreviewUrl}
+                        alt="Vista previa del archivo seleccionado"
+                      />
+                    )}
+                    <div className="file-caption">
+                      <b>
+                        {uploadFile
+                          ? uploadFile.name
+                          : "Seleccionar imagen o GIF"}
+                      </b>
+                      <small>
+                        {uploadFile
+                          ? `${(uploadFile.size / 1024 / 1024).toFixed(2)} MB · Clic para cambiar`
+                          : "Haz clic para elegir el archivo"}
+                      </small>
+                    </div>
+                  </label>
+                  <div>
+                    <input
+                      value={uploadName}
+                      onChange={(e) => setUploadName(e.target.value)}
+                      placeholder="Nombre del NFT"
+                      maxLength={120}
+                    />
+                    <textarea
+                      value={uploadDescription}
+                      onChange={(e) => setUploadDescription(e.target.value)}
+                      placeholder="Descripción"
+                      maxLength={1000}
+                    />
+                  </div>
+                </div>
+                <div className="attribute-head">
+                  <b>Atributos</b>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAttributes([
+                        ...attributes,
+                        { trait_type: "", value: "" },
+                      ])
+                    }
+                  >
+                    + Agregar
+                  </button>
+                </div>
+                {attributes.map((attribute, index) => (
+                  <div className="attribute-row" key={index}>
+                    <input
+                      value={attribute.trait_type}
+                      onChange={(e) =>
+                        setAttributes(
+                          attributes.map((a, i) =>
+                            i === index
+                              ? { ...a, trait_type: e.target.value }
+                              : a,
+                          ),
+                        )
+                      }
+                      placeholder="Característica (ej. Estilo)"
+                    />
+                    <input
+                      value={attribute.value}
+                      onChange={(e) =>
+                        setAttributes(
+                          attributes.map((a, i) =>
+                            i === index ? { ...a, value: e.target.value } : a,
+                          ),
+                        )
+                      }
+                      placeholder="Valor (ej. Doodle)"
+                    />
+                    {attributes.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAttributes(
+                            attributes.filter((_, i) => i !== index),
+                          )
+                        }
+                        aria-label="Eliminar atributo"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <small className="single-flow-note">
+                  La imagen, la metadata y el minteo se procesarán juntos al
+                  pulsar el botón principal.
+                </small>
+              </section>
+              <label>
+                Regalías para el creador <span>{royalty}%</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="0.5"
+                  value={royalty}
+                  onChange={(e) => setRoyalty(e.target.value)}
+                />
+                <div className="range-labels">
+                  <small>0%</small>
+                  <small>Máximo 20%</small>
+                </div>
+              </label>
+            </div>
+            <aside className="summary">
+              <h3>Resumen</h3>
+              <p>
+                <span>Precio de minteo</span>
+                <b>{formatEther(mintPrice)} POL</b>
+              </p>
+              <p>
+                <span>Regalías</span>
+                <b>{royalty}%</b>
+              </p>
+              <p>
+                <span>Red</span>
+                <b>Polygon</b>
+              </p>
+              <button
+                className="primary wide"
+                disabled={Boolean(busy) || !uploadFile || !uploadName.trim()}
+              >
+                {busy === "upload"
+                  ? "1/2 Publicando archivos…"
+                  : busy === "mint"
+                    ? "2/2 Confirmando minteo…"
+                    : `Subir y mintear · ${formatEther(mintPrice)} POL`}
+              </button>
+              <small>
+                Un solo flujo: firma de subida y confirmación del minteo.
+              </small>
+            </aside>
+          </form>
+        ) : tab === "collection" ? (
+          <div>
+            {nfts.length === 0 ? (
+              <div className="empty compact">
+                <div className="paw">✦</div>
+                <h3>Aún no has creado NFTs</h3>
+                <p>Tu primera historia on-chain aparecerá aquí.</p>
+                <button className="primary" onClick={() => setTab("mint")}>
+                  Crear mi primer NFT
+                </button>
+              </div>
+            ) : (
+              <div className="nft-grid">
+                {nfts.map((n) => (
+                  <article className="nft" key={n.id}>
+                    <div className="nft-art">
+                      <span>#{n.id}</span>
+                      {n.image ? (
+                        <img
+                          src={n.image}
+                          alt={n.name || `AyudaPet #${n.id}`}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="mini-face">•ᴗ•</div>
+                      )}
+                    </div>
+                    <div>
+                      <h3>{n.name || `AyudaPet #${n.id}`}</h3>
+                      <p title={n.description || n.uri}>
+                        {n.description || n.uri}
+                      </p>
+                      <div className="nft-actions">
+                        <a href={displayUri(n.uri)} target="_blank">
+                          Ver metadata ↗
+                        </a>
+                        {n.owner.toLowerCase() === account.toLowerCase() && (
+                          <button
+                            onClick={() => burn(n.id)}
+                            disabled={busy === `burn-${n.id}`}
+                          >
+                            {busy === `burn-${n.id}` ? "…" : "Quemar"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <form className="admin" onSubmit={adminUpdate}>
+            <div>
+              <h3>Precio de minteo</h3>
+              <p>Define el importe exacto que pagará cada creador.</p>
+              <input
+                name="price"
+                type="number"
+                min="0"
+                step="0.0001"
+                defaultValue={formatEther(mintPrice)}
+              />
+              <button
+                className="primary"
+                name="action"
+                value="price"
+                disabled={busy === "admin"}
+              >
+                Actualizar precio
+              </button>
+            </div>
+            <div>
+              <h3>Wallet administradora</h3>
+              <p>Recibe automáticamente los fondos de cada minteo.</p>
+              <input name="wallet" defaultValue={adminWallet} />
+              <button
+                className="primary"
+                name="action"
+                value="wallet"
+                disabled={busy === "admin"}
+              >
+                Actualizar wallet
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+      <footer>
+        <div className="brand">
+          <img className="brand-logo" src="/logo.png" alt="" />
+          <span>AyudaPet</span>
+        </div>
+        <p>Historias que dejan huella, preservadas en Polygon.</p>
+        <a
+          href={`https://polygonscan.com/address/${CONTRACT_ADDRESS}`}
+          target="_blank"
+        >
+          Contrato inteligente ↗
+        </a>
+      </footer>
+    </main>
+  );
+}
