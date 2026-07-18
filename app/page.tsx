@@ -22,7 +22,7 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 const DEFAULT_CONTRACT_ADDRESS =
-  "0x45c0044933dc6E26E671eb99014b507BD21E9B8e";
+  "0x0a83905002EaD855881a69E16211be9fE63E8709";
 const CONTRACT_ADDRESS =
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS?.trim() ||
   DEFAULT_CONTRACT_ADDRESS;
