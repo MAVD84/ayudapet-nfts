@@ -180,6 +180,27 @@ export default function Home() {
     };
   }, [provider, connectedChainId]);
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/creations", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Configuración no disponible");
+        return response.json();
+      })
+      .then(
+        (data: { mintPrice: string; owner: string; adminWallet: string }) => {
+          if (!active) return;
+          setMintPrice(BigInt(data.mintPrice));
+          setOwner(data.owner);
+          setAdminWallet(data.adminWallet);
+        },
+      )
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const refresh = useCallback(async (address?: string) => {
     if (!address) return;
     try {

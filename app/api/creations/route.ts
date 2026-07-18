@@ -19,7 +19,7 @@ const ABI = [
 
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get("address") || "";
-  if (!isAddress(address)) {
+  if (address && !isAddress(address)) {
     return NextResponse.json({ error: "Wallet no valida" }, { status: 400 });
   }
 
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       contract.mintPrice(),
       contract.owner(),
       contract.adminWallet(),
-      contract.getMisNfts(address),
+      address ? contract.getMisNfts(address) : Promise.resolve([] as bigint[]),
     ]);
     const nfts = await Promise.all(
       (ids as bigint[]).map(async (id) => {
