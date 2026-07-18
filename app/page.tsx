@@ -15,9 +15,6 @@ import {
   formatEther,
   isAddress,
   parseEther,
-  toBeHex,
-  zeroPadValue,
-  ZeroAddress,
 } from "ethers";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -178,86 +175,32 @@ export default function Home() {
   }, [provider, connectedChainId]);
 
   const refresh = useCallback(async (address?: string) => {
-    if (!provider) return;
+    if (!address) return;
     try {
-      const p = provider;
-      const network = await p.getNetwork();
-      setChainId(`0x${network.chainId.toString(16)}`);
-      if (network.chainId !== 137n) return;
-      const contract = new Contract(CONTRACT_ADDRESS, ABI, p);
-      const [price, contractOwner, wallet] = await Promise.all([
-        contract.mintPrice(),
-        contract.owner(),
-        contract.adminWallet(),
-      ]);
-      setMintPrice(price);
-      setOwner(contractOwner);
-      setAdminWallet(wallet);
-      if (address) {
-        const ids: bigint[] = await contract.getMisNfts(address);
-        const mintHashes = new Map<string, string>();
-        if (ids.length) {
-          try {
-            const transferEvent = contract.interface.getEvent("Transfer");
-            const transferTopic = transferEvent?.topicHash;
-            if (transferTopic) {
-              const latestBlock = await p.getBlockNumber();
-              const oldestBlock = Math.max(0, latestBlock - 1_000_000);
-              const remaining = new Set(
-                ids.map((tokenId) =>
-                  zeroPadValue(toBeHex(tokenId), 32).toLowerCase(),
-                ),
-              );
-              let toBlock = latestBlock;
-              let blockRange = 45_000;
-              while (toBlock >= oldestBlock && remaining.size) {
-                const fromBlock = Math.max(oldestBlock, toBlock - blockRange + 1);
-                try {
-                  const logs = await p.getLogs({
-                    address: CONTRACT_ADDRESS,
-                    fromBlock,
-                    toBlock,
-                    topics: [
-                      transferTopic,
-                      zeroPadValue(ZeroAddress, 32),
-                      null,
-                      Array.from(remaining),
-                    ],
-                  });
-                  for (const log of logs) {
-                    const tokenTopic = log.topics[3]?.toLowerCase();
-                    if (!tokenTopic) continue;
-                    const tokenId = BigInt(tokenTopic).toString();
-                    mintHashes.set(tokenId, log.transactionHash);
-                    remaining.delete(tokenTopic);
-                  }
-                  toBlock = fromBlock - 1;
-                } catch {
-                  if (blockRange > 9_000) {
-                    blockRange = 9_000;
-                    continue;
-                  }
-                  break;
-                }
-              }
-            }
-          } catch {
-            /* Las cards siguen disponibles aunque el RPC no entregue logs. */
-          }
-        }
-        const items = await Promise.all(
-          ids.map(async (id) => {
+      const response = await fetch(
+        `/api/creations?address=${encodeURIComponent(address)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error("No se pudieron consultar tus creaciones.");
+      const data = (await response.json()) as {
+        mintPrice: string;
+        owner: string;
+        adminWallet: string;
+        nfts: Array<{ id: string; uri: string; owner: string }>;
+      };
+      setMintPrice(BigInt(data.mintPrice));
+      setOwner(data.owner);
+      setAdminWallet(data.adminWallet);
+
+      const baseItems: NFT[] = data.nfts.map((nft) => ({
+        ...nft,
+        txHash: window.localStorage.getItem(`ayudapet-mint-${nft.id}`) || undefined,
+      }));
+      setNfts(baseItems);
+
+      const hydrated = await Promise.all(
+        baseItems.map(async (nft) => {
             try {
-              const tokenUri: string = await contract.tokenURI(id);
-              const nftOwner: string = await contract.ownerOf(id);
-              let nftTxHash = window.localStorage.getItem(
-                `ayudapet-mint-${id.toString()}`,
-              ) || mintHashes.get(id.toString());
-              if (nftTxHash)
-                window.localStorage.setItem(
-                  `ayudapet-mint-${id.toString()}`,
-                  nftTxHash,
-                );
               let metadata: {
                 name?: string;
                 image?: string;
@@ -265,36 +208,42 @@ export default function Home() {
               } = {};
               try {
                 const response = await fetch(
-                  `/api/metadata?uri=${encodeURIComponent(tokenUri)}`,
+                  `/api/metadata?uri=${encodeURIComponent(nft.uri)}`,
                 );
                 if (response.ok) metadata = await response.json();
               } catch {
                 /* La tarjeta conserva su respaldo visual. */
               }
               return {
-                id: id.toString(),
-                uri: tokenUri,
-                owner: nftOwner,
-                txHash: nftTxHash,
+                ...nft,
                 ...metadata,
                 image: metadata.image ? displayUri(metadata.image) : undefined,
               };
             } catch {
-              return null;
+              return nft;
             }
           }),
-        );
-        setNfts(items.filter(Boolean) as NFT[]);
-      }
+      );
+      setNfts(hydrated);
+
+      void fetch("/api/gallery")
+        .then((galleryResponse) => galleryResponse.ok ? galleryResponse.json() : [])
+        .then((gallery: GalleryNFT[]) => {
+          const hashes = new Map(gallery.map((item) => [item.id, item.txHash]));
+          setNfts((current) =>
+            current.map((nft) => ({ ...nft, txHash: nft.txHash || hashes.get(nft.id) })),
+          );
+        })
+        .catch(() => undefined);
     } catch (error) {
       setNotice({ type: "error", text: friendlyError(error) });
     }
-  }, [provider]);
+  }, []);
 
   useEffect(() => {
     const nextAccount = connectedAddress || "";
     setAccount(nextAccount);
-    if (!nextAccount || !provider) {
+    if (!nextAccount) {
       setRecipient("");
       setNfts([]);
       return;
