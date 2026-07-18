@@ -1045,28 +1045,6 @@ footer .brand-logo {
   opacity: 0.45;
   cursor: not-allowed;
 }
-.fixed-royalty {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 5px 18px;
-  padding: 16px 18px;
-  border: 1px solid #cbd7d0;
-  border-radius: 10px;
-  background: #f5f8f4;
-}
-.fixed-royalty span,
-.fixed-royalty b {
-  font-size: 13px;
-}
-.fixed-royalty b {
-  color: var(--orange);
-}
-.fixed-royalty small {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 10px;
-}
 .or {
   display: flex;
   align-items: center;

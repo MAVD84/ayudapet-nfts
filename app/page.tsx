@@ -707,11 +707,6 @@ export default function Home() {
                   pulsar el botón principal.
                 </small>
               </section>
-              <div className="fixed-royalty" role="note">
-                <span>Regalías EIP-2981</span>
-                <b>10% fijo</b>
-                <small>Definidas directamente por el contrato inteligente.</small>
-              </div>
             </div>
             <aside className="summary">
               <h3>Resumen</h3>
