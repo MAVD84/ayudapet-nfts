@@ -39,6 +39,9 @@ const ABI = [
   "function burn(uint256)",
   "function setMintPrice(uint256) payable",
   "function setAdminWallet(address) payable",
+  "error ValueUnchanged()",
+  "error InvalidAddress()",
+  "error NotAuthorized()",
 ];
 
 type NFT = {
@@ -105,6 +108,8 @@ function friendlyError(error: unknown) {
     return "El monto no coincide con el precio de minteo.";
   if (message.includes("NotAuthorized"))
     return "No tienes permiso para realizar esta acción.";
+  if (message.includes("ValueUnchanged"))
+    return "Ese valor ya está configurado. Escribe uno diferente antes de actualizar.";
   return message.length > 160
     ? "La transacción no pudo completarse. Revisa los datos y tu saldo."
     : message;
@@ -492,10 +497,24 @@ export default function Home() {
     try {
       setBusy("admin");
       const c = await signerContract();
-      const tx =
-        action === "price"
-          ? await c.setMintPrice(parseEther(String(data.get("price"))))
-          : await c.setAdminWallet(String(data.get("wallet")));
+      let tx;
+      if (action === "price") {
+        const newPrice = parseEther(String(data.get("price")));
+        if (newPrice === mintPrice)
+          throw new Error(
+            "Ese ya es el precio actual. Escribe una cantidad diferente en POL.",
+          );
+        tx = await c.setMintPrice(newPrice);
+      } else {
+        const newWallet = String(data.get("wallet"));
+        if (!isAddress(newWallet))
+          throw new Error("Escribe una dirección de wallet válida.");
+        if (newWallet.toLowerCase() === adminWallet.toLowerCase())
+          throw new Error(
+            "Esa ya es la wallet administradora. Escribe una dirección diferente.",
+          );
+        tx = await c.setAdminWallet(newWallet);
+      }
       await tx.wait();
       setNotice({
         type: "ok",
@@ -929,7 +948,7 @@ export default function Home() {
           <form className="admin" onSubmit={adminUpdate}>
             <div>
               <h3>Precio de minteo</h3>
-              <p>Define el importe exacto que pagará cada creador.</p>
+              <p>Define el importe exacto en POL que pagará cada creador.</p>
               <input
                 name="price"
                 type="number"
