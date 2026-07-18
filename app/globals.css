@@ -993,6 +993,39 @@ footer .brand-logo {
   resize: vertical;
   min-height: 72px;
 }
+.description-suggestions {
+  margin-top: 1px;
+  color: var(--muted);
+}
+.description-suggestions summary {
+  width: fit-content;
+  color: var(--orange);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.description-suggestions > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+.description-suggestions button {
+  border: 1px solid #d5ded8;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-size: 9px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.description-suggestions button:hover {
+  border-color: var(--orange);
+  background: #fff8f4;
+}
 .attribute-head {
   margin: 16px 0 8px;
   font-size: 12px;
@@ -1329,5 +1362,9 @@ footer .brand-logo {
 
   .gallery-track {
     grid-auto-columns: 82vw;
+  }
+
+  .description-suggestions > div {
+    grid-template-columns: 1fr;
   }
 }

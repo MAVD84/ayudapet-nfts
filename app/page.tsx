@@ -72,6 +72,18 @@ const PET_ATTRIBUTE_PLACEHOLDERS: Record<string, string> = {
   Personalidad: "Ej. Juguetón y cariñoso",
 };
 
+const DESCRIPTION_SUGGESTIONS = [
+  "Tu lealtad fue nuestro mayor tesoro. Gracias por todo.",
+  "Un amigo fiel que dejó una huella imborrable en nuestra alma.",
+  "Tu recuerdo es un regalo que atesoraremos por siempre.",
+  "El perro más fiel del mundo.",
+  "Lealtad pura y amor incondicional.",
+  "Compañero eterno de aventuras.",
+  "El dueño de nuestros corazones.",
+  "Amor incondicional en cuatro patas.",
+  "Huellas de amor por siempre.",
+];
+
 function short(address: string) {
   return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
 }
@@ -824,6 +836,20 @@ export default function Home() {
                       placeholder="Descripción"
                       maxLength={1000}
                     />
+                    <details className="description-suggestions">
+                      <summary>¿Necesitas inspiración? Ver frases sugeridas</summary>
+                      <div>
+                        {DESCRIPTION_SUGGESTIONS.map((suggestion) => (
+                          <button
+                            type="button"
+                            key={suggestion}
+                            onClick={() => setUploadDescription(suggestion)}
+                          >
+                            “{suggestion}”
+                          </button>
+                        ))}
+                      </div>
+                    </details>
                   </div>
                 </div>
                 <div className="attribute-head">
