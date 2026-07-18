@@ -19,7 +19,7 @@ import {
   zeroPadValue,
   ZeroAddress,
 } from "ethers";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DEFAULT_CONTRACT_ADDRESS =
   "0x0a83905002EaD855881a69E16211be9fE63E8709";
@@ -52,6 +52,17 @@ type NFT = {
   image?: string;
   description?: string;
   txHash?: string;
+};
+
+type GalleryNFT = {
+  id: string;
+  uri: string;
+  creator: string;
+  recipient: string;
+  txHash: string;
+  name?: string;
+  image?: string;
+  description?: string;
 };
 
 const PET_ATTRIBUTE_PLACEHOLDERS: Record<string, string> = {
@@ -110,6 +121,9 @@ export default function Home() {
   ]);
   const [busy, setBusy] = useState("");
   const [txHash, setTxHash] = useState("");
+  const [galleryNfts, setGalleryNfts] = useState<GalleryNFT[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(true);
+  const galleryTrack = useRef<HTMLDivElement>(null);
   const [notice, setNotice] = useState<{
     type: "ok" | "error";
     text: string;
@@ -261,6 +275,57 @@ export default function Home() {
     setUploadPreviewUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [uploadFile]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadGallery() {
+      try {
+        const response = await fetch("/api/gallery");
+        if (!response.ok) throw new Error("Galería no disponible");
+        const items = (await response.json()) as GalleryNFT[];
+        const hydrated = await Promise.all(
+          items.map(async (item) => {
+            try {
+              const metadataResponse = await fetch(
+                `/api/metadata?uri=${encodeURIComponent(item.uri)}`,
+              );
+              if (!metadataResponse.ok) return item;
+              const metadata = (await metadataResponse.json()) as {
+                name?: string;
+                image?: string;
+                description?: string;
+              };
+              return {
+                ...item,
+                ...metadata,
+                image: metadata.image
+                  ? displayUri(metadata.image)
+                  : undefined,
+              };
+            } catch {
+              return item;
+            }
+          }),
+        );
+        if (active) setGalleryNfts(hydrated);
+      } catch {
+        if (active) setGalleryNfts([]);
+      } finally {
+        if (active) setGalleryLoading(false);
+      }
+    }
+    loadGallery();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function moveGallery(direction: -1 | 1) {
+    galleryTrack.current?.scrollBy({
+      left: direction * 330,
+      behavior: "smooth",
+    });
+  }
 
   async function connect() {
     try {
@@ -547,6 +612,59 @@ export default function Home() {
           <small>ESTADO</small>
           <strong className="status">● Activo</strong>
         </div>
+      </section>
+
+      <section className="public-gallery" aria-labelledby="gallery-title">
+        <div className="gallery-heading">
+          <div>
+            <span className="eyebrow">GALERÍA AYUDAPET</span>
+            <h2 id="gallery-title">Mascotas que ya dejaron huella</h2>
+          </div>
+          {galleryNfts.length > 1 && (
+            <div className="gallery-controls">
+              <button onClick={() => moveGallery(-1)} aria-label="Ver anteriores">
+                ←
+              </button>
+              <button onClick={() => moveGallery(1)} aria-label="Ver siguientes">
+                →
+              </button>
+            </div>
+          )}
+        </div>
+        {galleryLoading ? (
+          <div className="gallery-loading">Cargando mascotas desde Polygon…</div>
+        ) : galleryNfts.length ? (
+          <div className="gallery-track" ref={galleryTrack}>
+            {galleryNfts.map((nft) => (
+              <article className="gallery-card" key={`${nft.id}-${nft.txHash}`}>
+                <div className="gallery-art">
+                  <span>#{nft.id}</span>
+                  {nft.image ? (
+                    <img
+                      src={nft.image}
+                      alt={nft.name || `AyudaPet #${nft.id}`}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="mini-face">•ᴗ•</div>
+                  )}
+                </div>
+                <div className="gallery-card-copy">
+                  <h3>{nft.name || `AyudaPet #${nft.id}`}</h3>
+                  <p>{nft.description || "Una historia preservada en Polygon."}</p>
+                  <a
+                    href={`https://polygonscan.com/tx/${nft.txHash}`}
+                    target="_blank"
+                  >
+                    Ver en PolygonScan ↗
+                  </a>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="gallery-loading">La primera mascota aparecerá aquí muy pronto.</div>
+        )}
       </section>
       </>}
 
