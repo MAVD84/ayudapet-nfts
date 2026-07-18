@@ -493,7 +493,9 @@ export default function Home() {
   async function adminUpdate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
-    const action = data.get("action");
+    const submitter = (e.nativeEvent as SubmitEvent)
+      .submitter as HTMLButtonElement | null;
+    const action = submitter?.value;
     try {
       setBusy("admin");
       const c = await signerContract();
