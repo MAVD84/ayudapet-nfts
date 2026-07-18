@@ -792,7 +792,12 @@ export default function Home() {
                           <button
                             type="button"
                             key={suggestion}
-                            onClick={() => setUploadDescription(suggestion)}
+                            onClick={(event) => {
+                              setUploadDescription(suggestion);
+                              event.currentTarget
+                                .closest("details")
+                                ?.removeAttribute("open");
+                            }}
                           >
                             “{suggestion}”
                           </button>
