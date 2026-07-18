@@ -22,7 +22,7 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 const DEFAULT_CONTRACT_ADDRESS =
-  "0xeEb5aABCe9F86F5757e4Fa539E49AD9F40CA5A3A";
+  "0x45c0044933dc6E26E671eb99014b507BD21E9B8e";
 const CONTRACT_ADDRESS =
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS?.trim() ||
   DEFAULT_CONTRACT_ADDRESS;
@@ -37,7 +37,8 @@ const ABI = [
   "function ownerOf(uint256) view returns (address)",
   "function tokenURI(uint256) view returns (string)",
   "event Transfer(address indexed from,address indexed to,uint256 indexed tokenId)",
-  "function mintCustomNFT(address,string,uint96) payable",
+  "function ROYALTY_BPS() view returns (uint96)",
+  "function mintCustomNFT(address,string) payable",
   "function burn(uint256)",
   "function setMintPrice(uint256) payable",
   "function setAdminWallet(address) payable",
@@ -68,7 +69,6 @@ function friendlyError(error: unknown) {
     e?.shortMessage || e?.message || "Ocurrió un error inesperado.";
   if (message.includes("InvalidURI"))
     return "La URI debe ser ipfs://, comenzar con baf o ser https://";
-  if (message.includes("RoyaltyTooHigh")) return "La regalía máxima es 20%.";
   if (message.includes("InvalidAmount"))
     return "El monto no coincide con el precio de minteo.";
   if (message.includes("NotAuthorized"))
@@ -91,7 +91,6 @@ export default function Home() {
   const [adminWallet, setAdminWallet] = useState("");
   const [nfts, setNfts] = useState<NFT[]>([]);
   const [recipient, setRecipient] = useState("");
-  const [royalty, setRoyalty] = useState("5");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState("");
   const [uploadName, setUploadName] = useState("");
@@ -287,12 +286,6 @@ export default function Home() {
         type: "error",
         text: "La dirección del destinatario no es válida.",
       });
-    const pct = Number(royalty);
-    if (pct < 0 || pct > 20)
-      return setNotice({
-        type: "error",
-        text: "La regalía debe estar entre 0% y 20%.",
-      });
     try {
       if (!uploadFile || !uploadName.trim())
         throw new Error(
@@ -302,12 +295,9 @@ export default function Home() {
       const metadataUri = await uploadNftFiles();
       setBusy("mint");
       const c = await signerContract();
-      const tx = await c.mintCustomNFT(
-        recipient,
-        metadataUri,
-        Math.round(pct * 100),
-        { value: mintPrice },
-      );
+      const tx = await c.mintCustomNFT(recipient, metadataUri, {
+        value: mintPrice,
+      });
       const receipt = await tx.wait();
       setTxHash(tx.hash);
       const mintedTransfer = receipt?.logs.find((log: { address: string; topics: string[] }) =>
@@ -486,7 +476,7 @@ export default function Home() {
           </h1>
           <p>
             Crea un NFT único para tu mascota, conserva su historia en la
-            blockchain y define regalías para su creador.
+            blockchain con regalías permanentes del 10% para AyudaPet.
           </p>
           <div className="hero-actions">
             <button
@@ -736,21 +726,11 @@ export default function Home() {
                   pulsar el botón principal.
                 </small>
               </section>
-              <label>
-                Regalías para el creador <span>{royalty}%</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="20"
-                  step="0.5"
-                  value={royalty}
-                  onChange={(e) => setRoyalty(e.target.value)}
-                />
-                <div className="range-labels">
-                  <small>0%</small>
-                  <small>Máximo 20%</small>
-                </div>
-              </label>
+              <div className="fixed-royalty" role="note">
+                <span>Regalías EIP-2981</span>
+                <b>10% fijo</b>
+                <small>Definidas directamente por el contrato inteligente.</small>
+              </div>
             </div>
             <aside className="summary">
               <h3>Resumen</h3>
@@ -760,7 +740,7 @@ export default function Home() {
               </p>
               <p>
                 <span>Regalías</span>
-                <b>{royalty}%</b>
+                <b>10%</b>
               </p>
               <p>
                 <span>Red</span>
