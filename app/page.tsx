@@ -549,7 +549,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="workspace" id="app">
+      {account && <section className="workspace" id="app">
         <div className="section-head">
           <div>
             <span className="eyebrow">TU ESPACIO</span>
@@ -601,22 +601,7 @@ export default function Home() {
             </a>
           </div>
         )}
-        {!account ? (
-          <div className="empty">
-            <div className="paw wallet-empty-icon" aria-hidden="true">
-              <span className="wallet-glyph" />
-            </div>
-            <h3>Conecta tu wallet para comenzar</h3>
-            <p>
-              Conecta una wallet compatible con Polygon desde este dispositivo
-              o escanea el QR con tu celular.
-            </p>
-            <button className="primary" onClick={connect}>
-              <span className="wallet-glyph wallet-glyph-light" aria-hidden="true" />
-              Conectar wallet
-            </button>
-          </div>
-        ) : !isPolygon ? (
+        {!isPolygon ? (
           <div className="empty">
             <div className="paw">◇</div>
             <h3>Cambia a la red Polygon</h3>
@@ -892,7 +877,7 @@ export default function Home() {
             </div>
           </form>
         )}
-      </section>
+      </section>}
       <footer>
         <div className="brand">
           <img className="brand-logo" src="/logo.png" alt="" />
