@@ -490,7 +490,7 @@ export default function Home() {
           </h1>
           <p>
             Crea un NFT único para tu mascota, conserva su historia en la
-            blockchain con regalías permanentes del 10% para AyudaPet.
+            blockchain y mantén vivo su recuerdo para siempre.
           </p>
           <div className="hero-actions">
             <button
