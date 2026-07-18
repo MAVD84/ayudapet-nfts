@@ -509,7 +509,6 @@ export default function Home() {
           <div className="trust">
             <span>✓ Contrato verificado</span>
             <span>✓ Estándar ERC-721</span>
-            <span>✓ Regalías EIP-2981</span>
           </div>
         </div>
         <div className="pet-card pixel-cover">
