@@ -54,6 +54,13 @@ type NFT = {
   txHash?: string;
 };
 
+const PET_ATTRIBUTE_PLACEHOLDERS: Record<string, string> = {
+  Especie: "Ej. Perro, gato, conejo…",
+  Raza: "Ej. Mestizo, Labrador…",
+  Color: "Ej. Café y blanco",
+  Personalidad: "Ej. Juguetón y cariñoso",
+};
+
 function short(address: string) {
   return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
 }
@@ -95,7 +102,12 @@ export default function Home() {
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState("");
   const [uploadName, setUploadName] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
-  const [attributes, setAttributes] = useState([{ trait_type: "", value: "" }]);
+  const [attributes, setAttributes] = useState([
+    { trait_type: "Especie", value: "" },
+    { trait_type: "Raza", value: "" },
+    { trait_type: "Color", value: "" },
+    { trait_type: "Personalidad", value: "" },
+  ]);
   const [busy, setBusy] = useState("");
   const [txHash, setTxHash] = useState("");
   const [notice, setNotice] = useState<{
@@ -289,8 +301,10 @@ export default function Home() {
     try {
       if (!uploadFile || !uploadName.trim())
         throw new Error(
-          "Selecciona una imagen o GIF y escribe el nombre del NFT.",
+          "Selecciona una imagen o GIF y escribe el nombre de tu mascota.",
         );
+      if (attributes.some((attribute) => !attribute.value.trim()))
+        throw new Error("Completa los cuatro atributos de tu mascota.");
       setBusy("upload");
       const metadataUri = await uploadNftFiles();
       setBusy("mint");
@@ -345,7 +359,7 @@ export default function Home() {
       throw new Error("Conecta tu wallet para autorizar la subida.");
     if (!uploadFile || !uploadName.trim())
       throw new Error(
-        "Selecciona una imagen o GIF y escribe el nombre del NFT.",
+        "Selecciona una imagen o GIF y escribe el nombre de tu mascota.",
       );
     if (uploadFile.size > 15 * 1024 * 1024)
       throw new Error("El archivo no puede superar 15 MB.");
@@ -655,7 +669,8 @@ export default function Home() {
                     <input
                       value={uploadName}
                       onChange={(e) => setUploadName(e.target.value)}
-                      placeholder="Nombre del NFT"
+                      placeholder="Nombre de tu mascota"
+                      aria-label="Nombre de tu mascota"
                       maxLength={120}
                     />
                     <textarea
@@ -667,34 +682,12 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="attribute-head">
-                  <b>Atributos</b>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAttributes([
-                        ...attributes,
-                        { trait_type: "", value: "" },
-                      ])
-                    }
-                  >
-                    + Agregar
-                  </button>
+                  <b>Datos de tu mascota</b>
+                  <small>Completa los 4 campos</small>
                 </div>
                 {attributes.map((attribute, index) => (
-                  <div className="attribute-row" key={index}>
-                    <input
-                      value={attribute.trait_type}
-                      onChange={(e) =>
-                        setAttributes(
-                          attributes.map((a, i) =>
-                            i === index
-                              ? { ...a, trait_type: e.target.value }
-                              : a,
-                          ),
-                        )
-                      }
-                      placeholder="Característica (ej. Estilo)"
-                    />
+                  <label className="attribute-row" key={attribute.trait_type}>
+                    <span>{attribute.trait_type}</span>
                     <input
                       value={attribute.value}
                       onChange={(e) =>
@@ -704,22 +697,10 @@ export default function Home() {
                           ),
                         )
                       }
-                      placeholder="Valor (ej. Doodle)"
+                      placeholder={PET_ATTRIBUTE_PLACEHOLDERS[attribute.trait_type]}
+                      required
                     />
-                    {attributes.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAttributes(
-                            attributes.filter((_, i) => i !== index),
-                          )
-                        }
-                        aria-label="Eliminar atributo"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
+                  </label>
                 ))}
                 <small className="single-flow-note">
                   La imagen, la metadata y el minteo se procesarán juntos al
@@ -748,7 +729,12 @@ export default function Home() {
               </p>
               <button
                 className="primary wide"
-                disabled={Boolean(busy) || !uploadFile || !uploadName.trim()}
+                disabled={
+                  Boolean(busy) ||
+                  !uploadFile ||
+                  !uploadName.trim() ||
+                  attributes.some((attribute) => !attribute.value.trim())
+                }
               >
                 {busy === "upload"
                   ? "1/2 Publicando archivos…"

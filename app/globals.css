@@ -997,6 +997,11 @@ footer .brand-logo {
   margin: 16px 0 8px;
   font-size: 12px;
 }
+.attribute-head small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
 .attribute-head button {
   border: 0;
   background: none;
@@ -1006,9 +1011,15 @@ footer .brand-logo {
 }
 .attribute-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 28px;
+  grid-template-columns: 145px 1fr;
+  align-items: center;
   gap: 8px;
   margin-top: 8px;
+}
+.attribute-row > span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
 }
 .attribute-row > button {
   border: 0;
@@ -1081,6 +1092,7 @@ footer .brand-logo {
   }
   .attribute-row {
     grid-template-columns: 1fr;
+    gap: 5px;
   }
   .attribute-row > button {
     height: 28px;
