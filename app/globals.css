@@ -604,6 +604,9 @@ footer {
   justify-content: space-between;
   padding: 45px max(7vw, 30px);
 }
+.landing-footer {
+  margin-top: 52px;
+}
 footer .brand {
   color: white;
 }

@@ -253,6 +253,7 @@ export default function Home() {
 
   async function connect() {
     try {
+      setTab("mint");
       await open({ view: "Connect" });
     } catch (e) {
       setNotice({ type: "error", text: friendlyError(e) });
@@ -476,6 +477,7 @@ export default function Home() {
         </div>
       </header>
 
+      {!account && <>
       <section className="hero" id="top">
         <div className="hero-copy">
           <span className="eyebrow">NFTs con propósito · Polygon</span>
@@ -489,12 +491,7 @@ export default function Home() {
           <div className="hero-actions">
             <button
               className="primary"
-              onClick={() => {
-                setTab("mint");
-                document
-                  .getElementById("app")
-                  ?.scrollIntoView({ behavior: "smooth" });
-              }}
+              onClick={connect}
             >
               Crear un NFT <span>→</span>
             </button>
@@ -548,6 +545,7 @@ export default function Home() {
           <strong className="status">● Activo</strong>
         </div>
       </section>
+      </>}
 
       {account && <section className="workspace" id="app">
         <div className="section-head">
@@ -878,7 +876,7 @@ export default function Home() {
           </form>
         )}
       </section>}
-      <footer>
+      <footer className={!account ? "landing-footer" : undefined}>
         <div className="brand">
           <img className="brand-logo" src="/logo.png" alt="" />
           <span>AyudaPet</span>
