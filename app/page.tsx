@@ -12,7 +12,11 @@ import {
 } from "ethers";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-const CONTRACT_ADDRESS = "0xeEb5aABCe9F86F5757e4Fa539E49AD9F40CA5A3A";
+const DEFAULT_CONTRACT_ADDRESS =
+  "0xeEb5aABCe9F86F5757e4Fa539E49AD9F40CA5A3A";
+const CONTRACT_ADDRESS =
+  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS?.trim() ||
+  DEFAULT_CONTRACT_ADDRESS;
 const POLYGON_CHAIN_ID = "0x89";
 const ABI = [
   "function name() view returns (string)",

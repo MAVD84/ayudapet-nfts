@@ -1,4 +1,15 @@
-# vinext-starter
+# AyudaPet NFTs
+
+## Variables de entorno
+
+Copia `.env.example` como `.env.local` para desarrollo. En Vercel configura las
+variables desde **Settings → Environment Variables**:
+
+- `NEXT_PUBLIC_CONTRACT_ADDRESS`: dirección del contrato AyudaPet en Polygon.
+- `AYUDAPET_UPLOAD_SECRET`: secreto privado que debe coincidir con HostVerge.
+
+El nuevo contrato debe conservar la misma interfaz definida en `app/page.tsx`.
+Después de cambiar la dirección es necesario volver a desplegar la aplicación.
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
