@@ -142,6 +142,7 @@ export default function Home() {
   const [txHash, setTxHash] = useState("");
   const [galleryNfts, setGalleryNfts] = useState<GalleryNFT[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(true);
+  const [totalMinted, setTotalMinted] = useState<number | null>(null);
   const galleryTrack = useRef<HTMLDivElement>(null);
   const [notice, setNotice] = useState<{
     type: "ok" | "error";
@@ -280,6 +281,9 @@ export default function Home() {
       try {
         const response = await fetch("/api/gallery");
         if (!response.ok) throw new Error("Galería no disponible");
+        const totalHeader = response.headers.get("X-Ayudapet-Total");
+        if (active && totalHeader !== null)
+          setTotalMinted(Number(totalHeader));
         const items = (await response.json()) as GalleryNFT[];
         const hydrated = await Promise.all(
           items.map(async (item) => {
@@ -620,8 +624,8 @@ export default function Home() {
           <strong>{formatEther(mintPrice)} POL</strong>
         </div>
         <div>
-          <small>TUS CREACIONES</small>
-          <strong>{nfts.length}</strong>
+          <small>NFTS CREADOS</small>
+          <strong>{totalMinted ?? "—"}</strong>
         </div>
         <div>
           <small>ESTADO</small>
