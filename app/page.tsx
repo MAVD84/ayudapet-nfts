@@ -1,8 +1,17 @@
 "use client";
 
 import {
+  useAppKit,
+  useAppKitAccount,
+  useAppKitNetwork,
+  useAppKitProvider,
+  useDisconnect,
+} from "@reown/appkit/react";
+import { polygon } from "@reown/appkit/networks";
+import {
   BrowserProvider,
   Contract,
+  type Eip1193Provider,
   formatEther,
   isAddress,
   parseEther,
@@ -33,22 +42,6 @@ const ABI = [
   "function setMintPrice(uint256) payable",
   "function setAdminWallet(address) payable",
 ];
-
-declare global {
-  interface Window {
-    ethereum?: {
-      request: (args: {
-        method: string;
-        params?: unknown[];
-      }) => Promise<unknown>;
-      on?: (event: string, fn: (...args: unknown[]) => void) => void;
-      removeListener?: (
-        event: string,
-        fn: (...args: unknown[]) => void,
-      ) => void;
-    };
-  }
-}
 
 type NFT = {
   id: string;
@@ -86,6 +79,11 @@ function friendlyError(error: unknown) {
 }
 
 export default function Home() {
+  const { open } = useAppKit();
+  const { address: connectedAddress } = useAppKitAccount();
+  const { chainId: connectedChainId, switchNetwork } = useAppKitNetwork();
+  const { walletProvider } = useAppKitProvider("eip155");
+  const { disconnect: disconnectAppKit } = useDisconnect();
   const [account, setAccount] = useState("");
   const [chainId, setChainId] = useState("");
   const [mintPrice, setMintPrice] = useState<bigint>(0n);
@@ -112,16 +110,16 @@ export default function Home() {
 
   const provider = useMemo(
     () =>
-      typeof window !== "undefined" && window.ethereum
-        ? new BrowserProvider(window.ethereum)
+      walletProvider
+        ? new BrowserProvider(walletProvider as Eip1193Provider)
         : null,
-    [account, chainId],
+    [walletProvider, connectedChainId],
   );
 
   const refresh = useCallback(async (address?: string) => {
-    if (!window.ethereum) return;
+    if (!provider) return;
     try {
-      const p = new BrowserProvider(window.ethereum);
+      const p = provider;
       const network = await p.getNetwork();
       setChainId(`0x${network.chainId.toString(16)}`);
       const contract = new Contract(CONTRACT_ADDRESS, ABI, p);
@@ -229,33 +227,19 @@ export default function Home() {
     } catch (error) {
       setNotice({ type: "error", text: friendlyError(error) });
     }
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
-    if (!window.ethereum) return;
-    window.ethereum.request({ method: "eth_accounts" }).then((a) => {
-      const first = (a as string[])[0] || "";
-      setAccount(first);
-      setRecipient(first);
-      refresh(first);
-    });
-    const accounts = (...args: unknown[]) => {
-      const first = ((args[0] as string[]) || [])[0] || "";
-      setAccount(first);
-      setRecipient(first);
-      refresh(first);
-    };
-    const chain = (...args: unknown[]) => {
-      setChainId(args[0] as string);
-      refresh(account);
-    };
-    window.ethereum.on?.("accountsChanged", accounts);
-    window.ethereum.on?.("chainChanged", chain);
-    return () => {
-      window.ethereum?.removeListener?.("accountsChanged", accounts);
-      window.ethereum?.removeListener?.("chainChanged", chain);
-    };
-  }, [account, refresh]);
+    const nextAccount = connectedAddress || "";
+    setAccount(nextAccount);
+    if (!nextAccount || !provider) {
+      setRecipient("");
+      setNfts([]);
+      return;
+    }
+    setRecipient(nextAccount);
+    refresh(nextAccount);
+  }, [connectedAddress, provider, refresh]);
 
   useEffect(() => {
     if (!uploadFile) {
@@ -268,35 +252,14 @@ export default function Home() {
   }, [uploadFile]);
 
   async function connect() {
-    if (!window.ethereum) {
-      setNotice({
-        type: "error",
-        text: "Instala MetaMask u otra wallet compatible para continuar.",
-      });
-      return;
-    }
     try {
-      const accounts = (await window.ethereum.request({
-        method: "eth_requestAccounts",
-      })) as string[];
-      setAccount(accounts[0]);
-      setRecipient(accounts[0]);
-      await refresh(accounts[0]);
+      await open({ view: "Connect" });
     } catch (e) {
       setNotice({ type: "error", text: friendlyError(e) });
     }
   }
   async function disconnect() {
-    if (window.ethereum) {
-      try {
-        await window.ethereum.request({
-          method: "wallet_revokePermissions",
-          params: [{ eth_accounts: {} }],
-        });
-      } catch {
-        // Algunas wallets no permiten revocar permisos desde una dApp.
-      }
-    }
+    await disconnectAppKit({ namespace: "eip155" });
     setAccount("");
     setRecipient("");
     setNfts([]);
@@ -304,28 +267,10 @@ export default function Home() {
     setNotice({ type: "ok", text: "Wallet desconectada." });
   }
   async function switchPolygon() {
-    if (!window.ethereum) return connect();
     try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: POLYGON_CHAIN_ID }],
-      });
+      await switchNetwork(polygon);
     } catch (e) {
-      const err = e as { code?: number };
-      if (err.code === 4902)
-        await window.ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: POLYGON_CHAIN_ID,
-              chainName: "Polygon",
-              nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
-              rpcUrls: ["https://polygon-rpc.com"],
-              blockExplorerUrls: ["https://polygonscan.com"],
-            },
-          ],
-        });
-      else setNotice({ type: "error", text: friendlyError(e) });
+      setNotice({ type: "error", text: friendlyError(e) });
     }
   }
   async function signerContract() {
@@ -663,8 +608,8 @@ export default function Home() {
             </div>
             <h3>Conecta tu wallet para comenzar</h3>
             <p>
-              Necesitas una wallet compatible con Polygon para crear y gestionar
-              tus NFTs.
+              Conecta una wallet compatible con Polygon desde este dispositivo
+              o escanea el QR con tu celular.
             </p>
             <button className="primary" onClick={connect}>
               <span className="wallet-glyph wallet-glyph-light" aria-hidden="true" />

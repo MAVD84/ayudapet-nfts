@@ -6,6 +6,7 @@ Copia `.env.example` como `.env.local` para desarrollo. En Vercel configura las
 variables desde **Settings → Environment Variables**:
 
 - `NEXT_PUBLIC_CONTRACT_ADDRESS`: dirección del contrato AyudaPet en Polygon.
+- `NEXT_PUBLIC_REOWN_PROJECT_ID`: Project ID público de Reown para WalletConnect.
 - `AYUDAPET_UPLOAD_SECRET`: secreto privado que debe coincidir con HostVerge.
 
 El nuevo contrato debe conservar la misma interfaz definida en `app/page.tsx`.
