@@ -9,7 +9,7 @@ const fraunces = Fraunces({ variable: "--font-serif", subsets: ["latin"] });
 export const metadata: Metadata = {
   metadataBase: new URL("https://ayudapet-nfts.vercel.app"),
   title: "AyudaPet · NFTs con propósito",
-  description: "Crea y gestiona recuerdos únicos de tu mascota en la red Polygon.",
+  description: "Mascotas que dejan huella, preservadas en Polygon.",
   alternates: { canonical: "/" },
   icons: { icon: "/logo.png", apple: "/logo.png" },
   openGraph: {
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "AyudaPet",
     title: "AyudaPet · NFTs con propósito",
-    description: "Historias que dejan huella, preservadas en Polygon.",
+    description: "Mascotas que dejan huella, preservadas en Polygon.",
     images: [
       {
         url: "/ayudapet-nft-pets-pixel.png",
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "AyudaPet · NFTs con propósito",
-    description: "Historias que dejan huella, preservadas en Polygon.",
+    description: "Mascotas que dejan huella, preservadas en Polygon.",
     images: ["/ayudapet-nft-pets-pixel.png"],
   },
 };
