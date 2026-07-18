@@ -75,6 +75,11 @@ const PET_ATTRIBUTE_PLACEHOLDERS: Record<string, string> = {
 function short(address: string) {
   return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
 }
+function isPolygonChain(value: string | number | undefined) {
+  if (value === undefined) return false;
+  const normalized = String(value).toLowerCase();
+  return normalized === "137" || normalized === "0x89" || normalized === "eip155:137";
+}
 function displayUri(uri: string) {
   return uri.startsWith("ipfs://")
     ? uri.replace("ipfs://", "https://ipfs.io/ipfs/")
@@ -129,7 +134,7 @@ export default function Home() {
     text: string;
   } | null>(null);
   const [tab, setTab] = useState<"mint" | "collection" | "admin">("mint");
-  const isPolygon = chainId.toLowerCase() === POLYGON_CHAIN_ID;
+  const isPolygon = isPolygonChain(connectedChainId ?? chainId);
   const isOwner =
     account && owner && account.toLowerCase() === owner.toLowerCase();
 
@@ -147,6 +152,7 @@ export default function Home() {
       const p = provider;
       const network = await p.getNetwork();
       setChainId(`0x${network.chainId.toString(16)}`);
+      if (network.chainId !== 137n) return;
       const contract = new Contract(CONTRACT_ADDRESS, ABI, p);
       const [price, contractOwner, wallet] = await Promise.all([
         contract.mintPrice(),
@@ -263,8 +269,15 @@ export default function Home() {
       return;
     }
     setRecipient(nextAccount);
+    if (!isPolygon) {
+      setNfts([]);
+      setNotice((current) =>
+        current?.text.toLowerCase().includes("decode result data") ? null : current,
+      );
+      return;
+    }
     refresh(nextAccount);
-  }, [connectedAddress, provider, refresh]);
+  }, [connectedAddress, isPolygon, provider, refresh]);
 
   useEffect(() => {
     if (!uploadFile) {
@@ -345,6 +358,7 @@ export default function Home() {
   }
   async function switchPolygon() {
     try {
+      setNotice(null);
       await switchNetwork(polygon);
     } catch (e) {
       setNotice({ type: "error", text: friendlyError(e) });
@@ -674,11 +688,6 @@ export default function Home() {
             <span className="eyebrow">TU ESPACIO</span>
             <h2>Crea, consulta y gestiona</h2>
           </div>
-          {!isPolygon && account && (
-            <button className="switch" onClick={switchPolygon}>
-              Cambiar a Polygon
-            </button>
-          )}
         </div>
         <nav className="tabs" aria-label="Acciones">
           <button
