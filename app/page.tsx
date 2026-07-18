@@ -78,7 +78,7 @@ function short(address: string) {
 function isPolygonChain(value: string | number | undefined) {
   if (value === undefined) return false;
   const normalized = String(value).toLowerCase();
-  return normalized === "137" || normalized === "0x89" || normalized === "eip155:137";
+  return normalized === "137" || normalized === POLYGON_CHAIN_ID || normalized === "eip155:137";
 }
 function displayUri(uri: string) {
   return uri.startsWith("ipfs://")
@@ -145,6 +145,25 @@ export default function Home() {
         : null,
     [walletProvider, connectedChainId],
   );
+
+  useEffect(() => {
+    let active = true;
+    if (!provider) {
+      setChainId("");
+      return;
+    }
+    provider
+      .getNetwork()
+      .then((network) => {
+        if (active) setChainId(`0x${network.chainId.toString(16)}`);
+      })
+      .catch(() => {
+        if (active) setChainId("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [provider, connectedChainId]);
 
   const refresh = useCallback(async (address?: string) => {
     if (!provider) return;
