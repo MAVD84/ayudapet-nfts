@@ -7,7 +7,10 @@ const CONTRACT_ADDRESS =
 const PROJECT_ID =
   process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ||
   "6f9068694eb846a3346fdfdc3ed301e7";
-const RPC_URL = `https://rpc.walletconnect.org/v1/?chainId=eip155:137&projectId=${PROJECT_ID}`;
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY?.trim();
+const RPC_URL = ALCHEMY_API_KEY
+  ? `https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
+  : `https://rpc.walletconnect.org/v1/?chainId=eip155:137&projectId=${PROJECT_ID}`;
 const ABI = [
   "function mintPrice() view returns (uint256)",
   "function adminWallet() view returns (address)",

@@ -306,8 +306,13 @@ export default function Home() {
         if (active && totalHeader !== null)
           setTotalMinted(Number(totalHeader));
         const items = (await response.json()) as GalleryNFT[];
+        if (active) {
+          setGalleryNfts(items);
+          setGalleryLoading(false);
+        }
         const hydrated = await Promise.all(
           items.map(async (item) => {
+            if (item.image && item.name) return item;
             try {
               const metadataResponse = await fetch(
                 `/api/metadata?uri=${encodeURIComponent(item.uri)}`,
@@ -675,7 +680,7 @@ export default function Home() {
           <div className="gallery-loading">Cargando mascotas desde Polygon…</div>
         ) : galleryNfts.length ? (
           <div className="gallery-track" ref={galleryTrack}>
-            {galleryNfts.map((nft) => (
+            {galleryNfts.map((nft, index) => (
               <article className="gallery-card" key={`${nft.id}-${nft.txHash}`}>
                 <div className="gallery-art">
                   <span>#{nft.id}</span>
@@ -683,7 +688,8 @@ export default function Home() {
                     <img
                       src={nft.image}
                       alt={nft.name || `AyudaPet #${nft.id}`}
-                      loading="lazy"
+                      loading={index < 3 ? "eager" : "lazy"}
+                      fetchPriority={index === 0 ? "high" : "auto"}
                     />
                   ) : (
                     <div className="mini-face">•ᴗ•</div>
