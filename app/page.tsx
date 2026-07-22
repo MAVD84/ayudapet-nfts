@@ -143,6 +143,7 @@ export default function Home() {
   const [galleryNfts, setGalleryNfts] = useState<GalleryNFT[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(true);
   const [totalMinted, setTotalMinted] = useState<number | null>(null);
+  const [polMxn, setPolMxn] = useState<number | null>(null);
   const galleryTrack = useRef<HTMLDivElement>(null);
   const [notice, setNotice] = useState<{
     type: "ok" | "error";
@@ -195,6 +196,22 @@ export default function Home() {
           setAdminWallet(data.adminWallet);
         },
       )
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/pol-price")
+      .then((response) => {
+        if (!response.ok) throw new Error("Cotización no disponible");
+        return response.json();
+      })
+      .then((data: { mxn: number }) => {
+        if (active && typeof data.mxn === "number") setPolMxn(data.mxn);
+      })
       .catch(() => undefined);
     return () => {
       active = false;
@@ -647,7 +664,17 @@ export default function Home() {
         </div>
         <div>
           <small>PRECIO ACTUAL</small>
-          <strong>{formatEther(mintPrice)} POL</strong>
+          <strong className="price-current">
+            <span>{formatEther(mintPrice)} POL</span>
+            {polMxn !== null && (
+              <span className="price-mxn">
+                ≈ {(Number(formatEther(mintPrice)) * polMxn).toLocaleString(
+                  "es-MX",
+                  { style: "currency", currency: "MXN" },
+                )} MXN
+              </span>
+            )}
+          </strong>
         </div>
         <div>
           <small>NFTS CREADOS</small>
